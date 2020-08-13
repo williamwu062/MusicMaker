@@ -1,5 +1,7 @@
 package com.wwuhoo;
 
+import java.util.Arrays;
+
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
@@ -90,6 +92,33 @@ public class PitchDetector implements PitchDetectionHandler {
 		mixer.close();
 		System.out.println("Closed");
 	}
+	
+	/**
+	 * Detects how close the detected pitch is to the pitch of the closest guitar string.
+	 * @param pitch the detected pitch
+	 * @return an array with the closest note in Hz, and the value of the detected pitch - closest guitar string pitch.
+	 */
+	private float[] detectCloseness(float pitch) {
+		float[] closeness = new float[Notes.notes_arr.length];
+		float[] temp = new float[Notes.notes_arr.length];
+		
+		int closest_note = 0;
+		float min = Integer.MAX_VALUE;
+		float temp_min = min;
+		int min_key = 0;
+		
+		for (int i = 0; i < Notes.notes_arr.length; i++) {
+			closeness[i] = pitch - Notes.notes_arr[i];
+			temp[i] = Math.abs(pitch - Notes.notes_arr[i]);
+			
+			if (min > (temp_min=Math.min(min, temp[i]))) {
+				min = temp_min;
+				closest_note = Notes.notes_arr[i];
+				min_key = i;
+			}
+		}
+		return new float[] {closest_note, closeness[min_key]};
+	}
 
 	public static void main(String[] args) {
 		PitchDetector detector = new PitchDetector();
@@ -124,8 +153,17 @@ public class PitchDetector implements PitchDetectionHandler {
 			float pitch = pitchDetectionResult.getPitch();
 			float probability = pitchDetectionResult.getProbability();
 			double rms = audioEvent.getRMS() * 100;
-			String message = String.format("Pitch detected at %.2fs: %.2fHz ( %.2f probability, RMS: %.5f )\n",
-					timeStamp, pitch, probability, rms);
+			
+			float[] closeness = detectCloseness(pitch);
+			int closest_note = (int) closeness[0];
+			Character note = Notes.getNote(closest_note);
+			
+			
+//			String message = String.format("Pitch detected at %.2fs: %.2fHz ( %.2f probability, RMS: %.5f )\n",
+//					timeStamp, pitch, probability, rms);
+			
+			
+			String message = String.format("%s from %c", closeness[1], note);
 			System.out.println(message);
 		}
 	}
