@@ -1,6 +1,6 @@
 package com.wwuhoo;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
@@ -21,6 +21,7 @@ import be.tarsos.dsp.pitch.PitchProcessor.PitchEstimationAlgorithm;
 
 /**
  * This class captures the pitch in Hertz of a live sound.
+ * 
  * @author williamwu
  */
 public class PitchDetector implements PitchDetectionHandler {
@@ -29,9 +30,12 @@ public class PitchDetector implements PitchDetectionHandler {
 	private Mixer mixer;
 	private PitchEstimationAlgorithm algorithm;
 	private TargetDataLine line;
-	
+
+	private ArrayList<float[]> pitchInfo;
+
 	/**
 	 * Sets the audio format to a default.
+	 * 
 	 * @return the audio format.
 	 */
 	private AudioFormat setAudioFormat() {
@@ -45,10 +49,13 @@ public class PitchDetector implements PitchDetectionHandler {
 	}
 
 	/**
-	 * Initializes algorithm parameter and finds an appropriate mixer to use (Default Audio Device).
+	 * Initializes algorithm parameter and finds an appropriate mixer to use
+	 * (Default Audio Device).
 	 */
 	public PitchDetector() {
 		algorithm = PitchEstimationAlgorithm.YIN;
+
+		pitchInfo = new ArrayList<float[]>();
 
 		Mixer.Info[] mixers = AudioSystem.getMixerInfo();
 		for (final Info mixerinfo : mixers) {
@@ -62,9 +69,11 @@ public class PitchDetector implements PitchDetectionHandler {
 
 	/**
 	 * Starts the mixer and enables recording of audio.
-	 * @throws LineUnavailableException if the line cannot be opened due to resource restrictions.
+	 * 
+	 * @throws LineUnavailableException if the line cannot be opened due to resource
+	 *                                  restrictions.
 	 */
-	private void startMixer() throws LineUnavailableException {
+	public void startMixer() throws LineUnavailableException {
 		AudioFormat format = setAudioFormat();
 
 		DataLine.Info datalineInfo = new DataLine.Info(TargetDataLine.class, format);
@@ -87,63 +96,51 @@ public class PitchDetector implements PitchDetectionHandler {
 	/**
 	 * Closes the line and the mixer.
 	 */
-	private void closeMixer() {
+	public void closeMixer() {
 		line.stop();
 		mixer.close();
 		System.out.println("Closed");
 	}
-	
+
 	/**
-	 * Detects how close the detected pitch is to the pitch of the closest guitar string.
+	 * Detects how close the detected pitch is to the pitch of the closest guitar
+	 * string.
+	 * 
 	 * @param pitch the detected pitch
-	 * @return an array with the closest note in Hz, and the value of the detected pitch - closest guitar string pitch.
+	 * @return an array with the closest note in Hz, and the value of the detected
+	 *         pitch - closest guitar string pitch.
 	 */
 	private float[] detectCloseness(float pitch) {
-		float[] closeness = new float[Notes.notes_arr.length];
-		float[] temp = new float[Notes.notes_arr.length];
+		int size = 0;
+		for (int i = 0; i < Notes.notes_arr.length; i++) {
+			for (int j = 0; j < Notes.notes_arr[i].length; j++) {
+				size++;
+			}
+		}
 		
-		int closest_note = 0;
+		float[] closeness = new float[size];
+
+		float closest_note = 0;
 		float min = Integer.MAX_VALUE;
 		float temp_min = min;
 		int min_key = 0;
-		
+
 		for (int i = 0; i < Notes.notes_arr.length; i++) {
-			closeness[i] = pitch - Notes.notes_arr[i];
-			temp[i] = Math.abs(pitch - Notes.notes_arr[i]);
-			
-			if (min > (temp_min=Math.min(min, temp[i]))) {
-				min = temp_min;
-				closest_note = Notes.notes_arr[i];
-				min_key = i;
+			for (int j = 0; j < Notes.notes_arr[i].length; j++) {
+				closeness[i+j] = (float) (pitch - Notes.notes_arr[i][j]);
+
+				if (min > (temp_min = Math.min(min, Math.abs(closeness[i+j])))) {
+					min = temp_min;
+					closest_note = (float) Notes.notes_arr[i][j];
+					min_key = i+j;
+				}
 			}
 		}
-		return new float[] {closest_note, closeness[min_key]};
+		return new float[] { closest_note, closeness[min_key] };
 	}
 
-	public static void main(String[] args) {
-		PitchDetector detector = new PitchDetector();
-
-		/*
-		Thread stopper = new Thread(new Runnable() {
-			@Override
-			public void run() {
-				try {
-					Thread.sleep(20000);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-				detector.closeMixer();
-			}
-		});
-		stopper.start();
-		*/
-
-		try {
-			detector.startMixer();
-		} catch (LineUnavailableException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+	private void infoToList(float timeStamp, float pitch, float rms) {
+		pitchInfo.add(new float[] { timeStamp, rms, pitch });
 	}
 
 	@Override
@@ -153,18 +150,42 @@ public class PitchDetector implements PitchDetectionHandler {
 			float pitch = pitchDetectionResult.getPitch();
 			float probability = pitchDetectionResult.getProbability();
 			double rms = audioEvent.getRMS() * 100;
-			
+
 			float[] closeness = detectCloseness(pitch);
-			int closest_note = (int) closeness[0];
-			Character note = Notes.getNote(closest_note);
-			
-			
-//			String message = String.format("Pitch detected at %.2fs: %.2fHz ( %.2f probability, RMS: %.5f )\n",
-//					timeStamp, pitch, probability, rms);
-			
-			
-			String message = String.format("%s from %c", closeness[1], note);
+			float closest_note = closeness[0];
+			String note = Notes.getNote(closest_note);
+
+			//String message = String.format("Pitch detected at %.2fs: %.2fHz ( %.2f probability, RMS: %.5f )\n",
+					//timeStamp, pitch, probability, rms);
+
+			String message = String.format("%s from %s", closeness[1], note);
 			System.out.println(message);
+
+			infoToList((float) timeStamp, pitch, (float) rms);
+		}
+	}
+
+	public ArrayList<float[]> getList() {
+		return pitchInfo;
+	}
+
+	/**
+	 * Gets the notes of an float[] arrayList formatted to be in the form:
+	 * {timeStamp, rms, pitch}.
+	 * 
+	 * @param list the arrayList holding the pitch information.
+	 */
+	public static void getNotes(ArrayList<float[]> list) {
+		ArrayList<float[]> notesAndTime = new ArrayList<float[]>();
+		float prevRMS = 0;
+		for (int i = 0; i < list.size(); i++) {
+			if (i == 0) {
+				prevRMS = list.get(i)[1];
+				notesAndTime.add(new float[] { list.get(i)[0], list.get(i)[2] });
+
+			} else {
+				// prevRMS =
+			}
 		}
 	}
 
