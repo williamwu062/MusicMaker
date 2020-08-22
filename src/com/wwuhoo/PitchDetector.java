@@ -110,14 +110,14 @@ public class PitchDetector implements PitchDetectionHandler {
 	 * @return an array with the closest note in Hz, and the value of the detected
 	 *         pitch - closest guitar string pitch.
 	 */
-	private float[] detectCloseness(float pitch) {
+	private static float[] detectCloseness(float pitch) {
 		int size = 0;
 		for (int i = 0; i < Notes.notes_arr.length; i++) {
 			for (int j = 0; j < Notes.notes_arr[i].length; j++) {
 				size++;
 			}
 		}
-		
+
 		float[] closeness = new float[size];
 
 		float closest_note = 0;
@@ -127,12 +127,12 @@ public class PitchDetector implements PitchDetectionHandler {
 
 		for (int i = 0; i < Notes.notes_arr.length; i++) {
 			for (int j = 0; j < Notes.notes_arr[i].length; j++) {
-				closeness[i+j] = (float) (pitch - Notes.notes_arr[i][j]);
+				closeness[i + j] = (float) (pitch - Notes.notes_arr[i][j]);
 
-				if (min > (temp_min = Math.min(min, Math.abs(closeness[i+j])))) {
+				if (min > (temp_min = Math.min(min, Math.abs(closeness[i + j])))) {
 					min = temp_min;
 					closest_note = (float) Notes.notes_arr[i][j];
-					min_key = i+j;
+					min_key = i + j;
 				}
 			}
 		}
@@ -140,7 +140,7 @@ public class PitchDetector implements PitchDetectionHandler {
 	}
 
 	private void infoToList(float timeStamp, float pitch, float rms) {
-		pitchInfo.add(new float[] { timeStamp, rms, pitch });
+		pitchInfo.add(new float[] { timeStamp, pitch, rms });
 	}
 
 	@Override
@@ -155,8 +155,9 @@ public class PitchDetector implements PitchDetectionHandler {
 			float closest_note = closeness[0];
 			String note = Notes.getNote(closest_note);
 
-			//String message = String.format("Pitch detected at %.2fs: %.2fHz ( %.2f probability, RMS: %.5f )\n",
-					//timeStamp, pitch, probability, rms);
+			// String message = String.format("Pitch detected at %.2fs: %.2fHz ( %.2f
+			// probability, RMS: %.5f )\n",
+			// timeStamp, pitch, probability, rms);
 
 			String message = String.format("%s from %s", closeness[1], note);
 			System.out.println(message);
@@ -170,23 +171,55 @@ public class PitchDetector implements PitchDetectionHandler {
 	}
 
 	/**
+	 * Helper method for getNotes() that translates a time and pitch to a note
+	 * formatted for JFugue, i.e. C4h
+	 * 
+	 * @return note formatted for JFugue, i.e. C4h
+	 */
+	private static String getNoteValue(float prevTimeStamp, float currTimeStamp, float pitch) {
+		float new_time = Math.round(currTimeStamp * 100) / 100;
+		float unrounded_length = currTimeStamp - prevTimeStamp;
+		float length = Math.round(unrounded_length * 4) / 4f;
+		int num_iterations = (int) (length / 0.25f);
+		
+		float[] closeness = detectCloseness(pitch);
+		float closest_note = closeness[0];
+		String note_part = Notes.getNote(closest_note);
+		String note = note_part + "q" + num_iterations;
+		
+		return note;
+	}
+
+	/**
 	 * Gets the notes of an float[] arrayList formatted to be in the form:
 	 * {timeStamp, rms, pitch}.
 	 * 
 	 * @param list the arrayList holding the pitch information.
 	 */
-	public static void getNotes(ArrayList<float[]> list) {
+	public static ArrayList<String> getNotes(ArrayList<float[]> list) {
 		ArrayList<float[]> notesAndTime = new ArrayList<float[]>();
 		float prevRMS = 0;
+		float beginTime = 0;
 		for (int i = 0; i < list.size(); i++) {
+			float currRMS = list.get(i)[2];
 			if (i == 0) {
-				prevRMS = list.get(i)[1];
-				notesAndTime.add(new float[] { list.get(i)[0], list.get(i)[2] });
-
+				beginTime = list.get(i)[0];
+				notesAndTime.add(new float[] { list.get(i)[0] - beginTime, list.get(i)[1] });
 			} else {
-				// prevRMS =
+				if (prevRMS < currRMS) {
+					notesAndTime.add(new float[] { list.get(i)[0] - beginTime, list.get(i)[1] });
+				}
 			}
+			prevRMS = currRMS;
 		}
+		
+		ArrayList<String> notes = new ArrayList<String>();
+		for (int i = 1; i < notesAndTime.size(); i++) {
+			String note = getNoteValue(notesAndTime.get(i - 1)[0], notesAndTime.get(i)[0], notesAndTime.get(i)[1]);
+			notes.add(note);
+		}
+		
+		return notes;
 	}
 
 }
